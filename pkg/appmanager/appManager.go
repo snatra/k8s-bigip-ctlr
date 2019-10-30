@@ -148,6 +148,7 @@ type Manager struct {
 	as3RouteCfg     ActiveAS3Route
 	As3SchemaLatest string
 	intF5Res        InternalF5ResourcesGroup // AS3 Specific features that can be applied to a Route/Ingress
+	OverrideAS3Decl string                   // Override existing as3 declaration with this configmap
 	// Path of schemas reside locally
 	SchemaLocalPath string
 	// Flag to check schema validation using reference or string
@@ -201,6 +202,7 @@ type Params struct {
 	SSLInsecure        bool
 	TrustedCertsCfgmap string
 	Agent              string
+	OverrideAS3Decl    string
 	SchemaLocalPath    string
 	LogAS3Response     bool
 }
@@ -258,6 +260,7 @@ func NewManager(params *Params) *Manager {
 		sslInsecure:        params.SSLInsecure,
 		trustedCertsCfgmap: params.TrustedCertsCfgmap,
 		Agent:              getValidAgent(params.Agent),
+		OverrideAS3Decl:    params.OverrideAS3Decl,
 		intF5Res:           make(map[string]InternalF5Resources),
 		SchemaLocalPath:    params.SchemaLocal,
 		logAS3Response:     params.LogAS3Response,

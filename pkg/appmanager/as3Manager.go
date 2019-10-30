@@ -587,15 +587,13 @@ func (appMgr *Manager) getCertFromConfigMap(cfgmap string) {
 
 	certificates = ""
 	namespaceCfgmapSlice := strings.Split(cfgmap, "/")
-	if len(namespaceCfgmapSlice) < 2 {
+	if len(namespaceCfgmapSlice) != 2 {
 		log.Debugf("[as3_log] Invalid trusted-certs-cfgmap option provided.")
 	} else {
 		certs := ""
-		namespace := namespaceCfgmapSlice[0]
-		cfgmapName := namespaceCfgmapSlice[1]
-		cm, err := appMgr.kubeClient.CoreV1().ConfigMaps(namespace).Get(cfgmapName, metaV1.GetOptions{})
+		cm, err := appMgr.getConfigMapUsingNamespaceAndName(namespaceCfgmapSlice[0], namespaceCfgmapSlice[1])
 		if err != nil {
-			log.Debugf("[as3_log] Reading certificate from configmap error: %v", err)
+			log.Debugf("[AS3] Reading certificate from configmap error: %v", err)
 		} else {
 			//Fetching all certificates from configmap
 			for _, v := range cm.Data {
@@ -604,6 +602,16 @@ func (appMgr *Manager) getCertFromConfigMap(cfgmap string) {
 			certificates = certs
 		}
 	}
+}
+
+func (appMgr *Manager) getConfigMapUsingNamespaceAndName(cfgMapNamespace, cfgMapName string) (*v1.ConfigMap, error) {
+	cfgMap, err := appMgr.kubeClient.CoreV1().ConfigMaps(cfgMapNamespace).Get(cfgMapName, metaV1.GetOptions{})
+	if err == nil {
+		return cfgMap, err
+	}
+	log.Debugf("[AS3] ConfigMap not found for this name: %v and namespace: %v, error: %v",
+		cfgMapName, cfgMapNamespace, err)
+	return nil, err
 }
 
 // SetupAS3Informers returns an appInformer that includes the following set of informers.
@@ -833,6 +841,29 @@ func (appMgr *Manager) getUnifiedAS3Declaration(as3CfgmapDecl as3Declaration, ro
 	if err != nil {
 		log.Debugf("[as3] Unified declaration: %v\n", err)
 	}
+
+	// Override AS3 Config if AS3 Override is enabled
+	if appMgr.OverrideAS3Decl != "" {
+		// Fetch configMap's namespace and name
+		overrideAS3Decl := strings.Split(appMgr.OverrideAS3Decl, "/")
+		// Fetch configMap using namespace and name as an input
+		cfgMap, err := appMgr.getConfigMapUsingNamespaceAndName(overrideAS3Decl[0], overrideAS3Decl[1])
+		if err == nil {
+			// Only one entry is allowed in cfgMap Data
+			if len(cfgMap.Data) == 1 {
+				for _, data := range cfgMap.Data {
+					overriddenUnifiedDecl := ValidateAndOverrideAS3JsonData(data, string(unifiedDecl))
+					if overriddenUnifiedDecl != "" {
+						log.Debugf("[AS3] Unified AS3 declaration is overridden !!! ")
+						return as3Declaration(overriddenUnifiedDecl), true
+					}
+				}
+				log.Debugf("[AS3] Unified AS3 declaration is not overridden due to errors !!! ")
+			}
+			log.Errorf("[AS3] Invalid override cfgMap, AS3 declaration is not overridden !!! ")
+		}
+	}
+
 	return as3Declaration(string(unifiedDecl)), true
 }
 
