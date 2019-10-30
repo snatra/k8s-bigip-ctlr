@@ -6,6 +6,7 @@ Next Release
 Added Functionality
 `````````````````````
 * Controller handles extended URL paths to the nearest matching backend context paths.
+* Controller implements support for overriding already existing AS3 resources(ConfigMap, Route and Ingress) through ConfigMap. 
 
 Bug Fixes
 `````````
