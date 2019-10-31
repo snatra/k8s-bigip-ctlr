@@ -99,12 +99,15 @@ func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 
 	declaration := appMgr.buildAS3Declaration(obj, templateObj)
 
-	appMgr.as3Members = buffer
 	appMgr.watchedAS3Endpoints = epbuffer
 	tempAs3ConfigmapDecl := declaration
 	tempRouteConfigDecl := appMgr.as3RouteCfg.Data
 	if unifiedDecl, ok := appMgr.getUnifiedAS3Declaration(tempAs3ConfigmapDecl, tempRouteConfigDecl); ok {
-		appMgr.postAS3Declaration(unifiedDecl, tempAs3ConfigmapDecl, tempRouteConfigDecl)
+		rsp := appMgr.postAS3Declaration(unifiedDecl, tempAs3ConfigmapDecl, tempRouteConfigDecl)
+		// Update AS3 context only if the as3 declaration is posted to BIG-IP
+		if rsp != ""{
+			appMgr.as3Members = buffer
+		}
 	}
 	return true
 }
@@ -472,10 +475,10 @@ func (appMgr *Manager) updateAdmitStatus() {
 
 // TODO: Refactor
 // Takes AS3 Declaration and post it to BigIP
-func (appMgr *Manager) postAS3Declaration(declaration as3Declaration, tempAs3ConfigmapDecl as3Declaration, tempRouteConfigDecl as3ADC) {
+func (appMgr *Manager) postAS3Declaration(declaration as3Declaration, tempAs3ConfigmapDecl as3Declaration, tempRouteConfigDecl as3ADC) (string) {
 	log.Debugf("[as3_log] Processing AS3 POST call with AS3 Manager")
 	as3RC.baseURL = BigIPURL
-	_, ok := as3RC.restCallToBigIP("POST", "/mgmt/shared/appsvcs/declare", declaration, appMgr.sslInsecure)
+	rsp, ok := as3RC.restCallToBigIP("POST", "/mgmt/shared/appsvcs/declare", declaration, appMgr.sslInsecure)
 	if ok {
 		appMgr.activeCfgMap.Data = string(tempAs3ConfigmapDecl)
 		appMgr.as3RouteCfg.Data = tempRouteConfigDecl
@@ -486,6 +489,7 @@ func (appMgr *Manager) postAS3Declaration(declaration as3Declaration, tempAs3Con
 	} else {
 		appMgr.as3RouteCfg.Pending = true
 	}
+	return rsp
 }
 
 // Takes AS3 Declaration, method, API route and post it to BigIP
@@ -574,7 +578,8 @@ func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string,
 			log.Debugf("[as3_log] Big-IP Response code: %v,Response:%v, Message: %v", v["code"], v["response"], v["message"])
 		}
 	} else {
-		log.Debugf("[as3_log] Big-IP Response error: %v", response)
+		//log.Debugf("[as3_log] Big-IP Response error: %v", response) // need fix to dump only non sensitive data
+		log.Debugf("[as3_log] Big-IP Responded with error code: %v", resp.StatusCode)
 	}
 	return string(body), false
 }
