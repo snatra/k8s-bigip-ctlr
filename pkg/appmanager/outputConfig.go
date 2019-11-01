@@ -218,6 +218,7 @@ func (appMgr *Manager) sendFDBEntries() {
 		log.Warningf("Failed to write FDB Records: %v", err)
 		return
 	}
+
 	select {
 	case <-doneCh:
 		log.Infof("Successfully Sent the FDB Records")
@@ -251,7 +252,6 @@ func (appMgr *Manager) sendARPEntries() {
 
 	if appMgr.eventChan != nil {
 		// Get all pool members and write them to VxlanMgr to configure ARP entries
-		var allPoolMembers []Member
 
 		for member := range appMgr.as3Members {
 			allPoolMembers = append(allPoolMembers, member)
