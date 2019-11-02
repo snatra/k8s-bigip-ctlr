@@ -12,7 +12,12 @@ Bug Fixes
 `````````
 * Controller handles combination of Edge and Reencrypt Openshift routes.
 * Controller now does not send encrypted traffic to backend.
+* Controller now does not log dozens of "INFO" log messages frequently in CCCL mode.
+* Ingress in K8S cluster mode, observing no data plane traffic as there were no static ARP entries available in BIG-IP.
 
+Limitations
+```````````
+* Master Node label must be set to "node-role.kubernetes.io/master=true" for K8S version 1.13.4 and OSCP version 4.1 in nodeport mode. If not set, master node will also be added as a pool member on BIG-IP. 
 
 v1.11.1
 ------------
