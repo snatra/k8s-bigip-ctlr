@@ -1063,6 +1063,10 @@ func (appMgr *Manager) syncVirtualServer(sKey serviceQueueKey) error {
 	if stats.vsUpdated > 0 || stats.vsDeleted > 0 || stats.cpUpdated > 0 ||
 		stats.dgUpdated > 0 || stats.poolsUpdated > 0 || len(appMgr.as3Members) > 0 || appMgr.as3RouteCfg.Pending {
 		appMgr.outputConfig()
+		// Need to figure out a right place to clean up as3Members
+		if len(appMgr.as3Members) > 0 {
+			appMgr.as3Members = map[Member]struct{}{}
+		}
 	} else if !appMgr.initialState && appMgr.processedItems >= appMgr.queueLen {
 		appMgr.outputConfig()
 	}
