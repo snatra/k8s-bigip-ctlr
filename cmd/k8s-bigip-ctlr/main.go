@@ -17,13 +17,16 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
+	"encoding/json"
 	"strings"
 	"syscall"
 	"time"
@@ -128,6 +131,14 @@ var (
 	isNodePort         bool
 	watchAllNamespaces bool
 	vxlanName          string
+
+	// BIG-IQ POC
+	bigIQMode          *bool
+	bigIQUsername      *string
+	bigIQPassword      *string
+	bigIQURL           *string
+	bigIQRefreshToken  *string
+	bigIQToken         *string
 )
 
 func _init() {
@@ -170,6 +181,8 @@ func _init() {
 	// BigIP flags
 	bigIPURL = bigIPFlags.String("bigip-url", "",
 		"Required, URL for the Big-IP")
+	bigIQURL = bigIPFlags.String("bigiq-url", "",
+		"Required, URL for the Big-IQ")
 	bigIPUsername = bigIPFlags.String("bigip-username", "",
 		"Required, user name for the Big-IP user account.")
 	bigIPPassword = bigIPFlags.String("bigip-password", "",
@@ -188,6 +201,16 @@ func _init() {
 	// TODO: Rephrase agent functionality
 	agent = bigIPFlags.String("agent", "cccl",
 		"Optional, when set to as3, orchestration agent will be AS3 instead of CCCL")
+
+	// BIG-IQ Flags
+	bigIQMode = bigIPFlags.Bool("bigiq-mode", false,
+		"Optional, when set the controller manages BIG-IP through Big-IQ.")
+	bigIQUsername = bigIPFlags.String("bigiq-username", "",
+		"Optional, user name for the Big-IQ user account.")
+	bigIQPassword = bigIPFlags.String("bigiq-password", "",
+		"Optional, password for the Big-IQ user account.")
+	//bigIQRefreshToken = bigIPFlags.String("bigiq-refresh-token", "",
+	//           "Optional, Token for the Big-IQ user account.")
 
 	bigIPFlags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "  BigIP:\n%s\n", bigIPFlags.FlagUsagesWrapped(width))
@@ -578,6 +601,152 @@ func setupWatchers(appMgr *appmanager.Manager, resyncPeriod time.Duration) {
 	}
 }
 
+
+// flushDaemon periodically flushes the log file buffers.
+func updateRefreshToken() {
+	log.Debugf("[as3_log] Updating REFRESH TOKEN")
+	for _ = range time.NewTicker(35000 * time.Second).C { //35000 grace time
+		bigIQRefreshToken, err := getBIQRefreshToken()
+		if err != nil {
+			log.Errorf("[as3_log] Failed to fetch Refresh Token from BIQ: %v ", err)
+		}
+		appmanager.BigIQRefreshToken = bigIQRefreshToken
+		log.Debugf("\n***********************") //TODO: Just for debugging will be removed later
+		log.Debugf("Updated BIQ_REFRESH_TOKEN: %v", bigIQRefreshToken)
+		log.Debugf("\n***********************")
+	}
+}
+
+// flushDaemon periodically flushes the log file buffers.
+func updateAuthToken() {
+	log.Debugf("[as3_log] Updating AUTH TOKEN")
+	for _ = range time.NewTicker(270 * time.Second).C { //270 grace time
+		bigIQAuthToken, err := getBIQAuthToken()
+		if err != nil {
+			log.Errorf("[as3_log] Failed to fetch Auth Token from BIQ: %v ", err)
+		}
+		log.Debugf("\n***********************")
+		log.Debugf("Updated BIQ_AUTH_TOKEN: %v\n",bigIQAuthToken)
+		log.Debugf("\n***********************")
+		appmanager.BigIQAuthToken = bigIQAuthToken
+	}
+}
+
+func getBIQAuthToken( ) (string, error){
+	log.Debugf("[as3_log] Fetching AUTH TOKEN")
+	var body []byte
+	var data io.Reader
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+
+	client := &http.Client{Transport: tr, Timeout: time.Duration(59 * time.Second)}
+
+	tokenURI := *bigIQURL+"/mgmt/shared/authn/exchange"
+
+	tokenData := fmt.Sprintf("{'refreshToken': {'token': '%v'}}", appmanager.BigIQRefreshToken)
+
+	data = bytes.NewBuffer([]byte(tokenData))
+
+	req, err := http.NewRequest("POST", tokenURI, data)
+	if err != nil {
+		log.Errorf("[as3_log] CIS failed to create HTTP request for BIG-IQ [error: %v]", err)
+		return string(body), err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorf("[as3_log] CIS failed to POST HTTP Request to BIG-IQ [error: %v]", err)
+		return string(body), err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		//Other then 200 status code
+		log.Errorf("[as3_log] getBIQAuthToken Received Big-IQ error response [error: %v]", resp)
+		return string(body), fmt.Errorf("Response Status %v", resp.StatusCode)
+	}
+
+	// Extract token from the response
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("[as3_log] Failed to read response from BIG-IQ [error: %v]", err)
+		return string(body), err
+	}
+
+	var tokenResponse map[string]interface{}
+	err = json.Unmarshal([]byte(body), &tokenResponse)
+	if err != nil {
+		log.Errorf("[as3_log] Failed to unmarshal BIG-IQ Response [error: %v]\n", err)
+		return string(body), err
+	}
+
+	token := (tokenResponse["token"]).(map[string]interface{})
+
+	return token["token"].(string), nil
+}
+
+func getBIQRefreshToken( ) (string, error){
+	log.Debugf("[as3_log] Fetching REFRESH TOKEN")
+	var body []byte
+	var data io.Reader
+
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+
+	client := &http.Client{Transport: tr, Timeout: time.Duration(60 * time.Second)}
+
+	tokenURI := *bigIQURL+"/mgmt/shared/authn/login"
+
+	tokenData := fmt.Sprintf("{'username': '%v', 'password': '%v', 'loginProviderName': 'local'}",
+		*bigIQUsername, *bigIQPassword)
+
+	data = bytes.NewBuffer([]byte(tokenData))
+
+	req, err := http.NewRequest("POST", tokenURI, data)
+	if err != nil {
+		log.Errorf("[as3_log] CIS failed to create HTTP request for BIG-IQ [error: %v]", err)
+		return string(body), err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorf("[as3_log] CIS failed to POST HTTP Request to BIG-IQ [error: %v]", err)
+		return string(body), err
+	}
+
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		//Other then 200 status code
+		log.Errorf("[as3_log] getBIQRefreshToken Received Big-IQ error response [error: %v]", resp)
+		return string(body), fmt.Errorf("Response Status %v", resp.StatusCode)
+	}
+
+	// Extract token from the response
+	body, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("[as3_log] Failed to read response from BIG-IQ [error: %v]", err)
+		return string(body), err
+	}
+
+	var tokenResponse map[string]interface{}
+	err = json.Unmarshal([]byte(body), &tokenResponse)
+	if err != nil {
+		log.Errorf("[as3_log] Failed to unmarshal BIG-IQ Response [error: %v]\n", err)
+		return string(body), err
+	}
+
+	token := (tokenResponse["refreshToken"]).(map[string]interface{})
+
+	return token["token"].(string), nil
+}
+
 func main() {
 	err := flags.Parse(os.Args)
 	if nil != err {
@@ -691,6 +860,21 @@ func main() {
 	appmanager.BigIPUsername = *bigIPUsername
 	appmanager.BigIPPassword = *bigIPPassword
 	appmanager.BigIPURL = *bigIPURL
+	appmanager.BigIQUsername = *bigIQUsername
+	appmanager.BigIQPassword = *bigIQPassword
+	appmanager.BigIQURL = *bigIQURL
+	appmanager.BigIQMode = *bigIQMode
+	appmanager.BigIQRefreshToken , err = getBIQRefreshToken()
+	if err != nil {
+		log.Errorf("[as3_log] CIS INIT Failed to fetch Refresh Token from BIQ: %v ", err)
+	}
+	appmanager.BigIQAuthToken, err = getBIQAuthToken()
+	if err != nil {
+		log.Errorf("[as3_log] CIS INIT Failed to fetch Auth Token from BIQ: %v ", err)
+	}
+
+	go updateAuthToken()
+	go updateRefreshToken()
 
 	subPidCh, err := startPythonDriver(configWriter, gs, bs, *pythonBaseDir)
 	if nil != err {

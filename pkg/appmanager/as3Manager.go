@@ -65,6 +65,14 @@ var BigIPUsername string
 var BigIPPassword string
 var BigIPURL string
 var as3RC AS3RESTClient
+// BIGIQ variables
+var BigIQUsername string
+var BigIQPassword string
+var BigIQMode bool
+var BigIQURL string
+var BigIQRefreshToken string
+var BigIQAuthToken string
+
 var certificates string
 
 var buffer map[Member]struct{}
@@ -75,14 +83,45 @@ var As3SchemaFlag string
 
 // Takes an AS3 Template and perform service discovery with Kubernetes to generate AS3 Declaration
 func (appMgr *Manager) processUserDefinedAS3(template string) bool {
-
-	// Validate AS3 Template
-	if appMgr.as3Validation == true {
-		log.Debugf("[as3] Start validating template")
-
-		if ok := appMgr.validateAS3Template(template); !ok {
-			log.Errorf("[as3] Error validating template \n")
+	var biqAS3Template string
+	var biqApplicationName string
+	var biqApplicationDescription string
+	if BigIQMode {
+		var err error
+		biqAS3Template, err = processBIQTemplate(template)
+		if err != nil {
+			log.Errorf("[as3_log] Failed to process BIG IQ Template: %v ", err)
 			return false
+		}
+
+		if biqAS3Template != "" {
+			log.Debugf("[as3_log] biqAS3Template", biqAS3Template)
+			var templateObj interface{}
+			err := json.Unmarshal([]byte(biqAS3Template), &templateObj)
+			if err != nil {
+				log.Errorf("[as3_log] Failed to unmarshal BIG-IQ Response [error: %v]\n", err)
+				return false
+			}
+
+			if as3BIQTemplateObj := (templateObj.(map[string]interface{}))["appSvcsDeclaration"]; as3BIQTemplateObj != nil {
+				as3Decleration, err := json.Marshal(as3BIQTemplateObj)
+				if err != nil {
+					log.Errorf("[as3_log] Failed to marshall BIQ_AS3_TEMPLATE")
+					return false
+				}
+				// Modifying template to AS3
+				template = string(as3Decleration)
+			} else {
+				log.Errorf("[as3_log] Invalid BIG-IQ Template [error: %v]\n", err)
+				return false
+			}
+			if biqAppString := ((templateObj.(map[string]interface{}))["applicationName"]); biqAppString != nil {
+				biqApplicationName = biqAppString.(string)
+			}
+
+			if biqAppString := ((templateObj.(map[string]interface{}))["applicationDescription"]); biqAppString != nil {
+				biqApplicationDescription = biqAppString.(string)
+			}
 		}
 	}
 
@@ -103,6 +142,45 @@ func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 	appMgr.watchedAS3Endpoints = epbuffer
 	tempAs3ConfigmapDecl := declaration
 	tempRouteConfigDecl := appMgr.as3RouteCfg.Data
+	if BigIQMode {
+		declaration = as3Declaration(fmt.Sprintf("{\"applicationName\": \"%v\"," +
+			                         "\"applicationDescription\": \"%v\", \"appSvcsDeclaration\": %v}", biqApplicationName,
+			                         biqApplicationDescription, string(declaration)))
+		log.Debugf("[as3_log] ###### Decleration : %v", declaration)
+		data := bytes.NewBuffer([]byte(declaration))
+		tokenURI := BigIQURL+"/mgmt/cm/global/tasks/deploy-to-application"
+		log.Debugf("[as3_log] ###### TOKEN URI: %v", tokenURI)
+		req, err := http.NewRequest("POST", tokenURI, data)
+		if err != nil {
+			log.Errorf("[as3_log] CIS failed to create HTTP request for BIG-IQ [error: %v]", err)
+			return false
+		}
+
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+
+		client := &http.Client{Transport: tr, Timeout: time.Duration(60 * time.Second)}
+
+		req.Header.Set( "X-F5-Auth-Token", BigIQAuthToken)
+		log.Debugf("[as3_log] ######AUTH TOKEN : %v", BigIQAuthToken)
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Errorf("[as3_log] CIS failed to POST HTTP Request to BIG-IQ [error: %v]", err)
+			return false
+		}
+
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			//Other then 200 status code
+			log.Errorf("[as3_log] Received Big-IQ error response [error: %v]", resp)
+			return false
+		}
+		//appMgr.postAS3Declaration(declaration)
+		return true
+	}
 	if unifiedDecl, ok := appMgr.getUnifiedAS3Declaration(tempAs3ConfigmapDecl, tempRouteConfigDecl); ok {
 		appMgr.postAS3Declaration(unifiedDecl, tempAs3ConfigmapDecl, tempRouteConfigDecl)
 	}
@@ -410,6 +488,77 @@ func (appMgr *Manager) containsProcessedRoute(route routev1.Route) bool {
 	return false
 }
 
+func processBIQTemplate(template string) (string, error){
+	var body []byte
+	var data io.Reader
+	var isBIQTemplatePres bool
+
+	var templateObj interface{}
+	err := json.Unmarshal([]byte(template), &templateObj)
+	if err != nil {
+		log.Errorf("[as3_log] Failed to unmarshal BIG-IQ Response [error: %v]\n", err)
+		return string(body), err
+	}
+
+	if as3BIQTemplateObj := (templateObj.(map[string]interface{}))["BIQ_AS3_TEMPLATE"]; as3BIQTemplateObj != nil {
+		declaration, err := json.Marshal(as3BIQTemplateObj)
+		if err != nil {
+			log.Errorf("[as3_log] Failed to marshall BIQ_AS3_TEMPLATE")
+			return "", err
+		}
+
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		}
+
+		client := &http.Client{Transport: tr, Timeout: time.Duration(60 * time.Second)}
+
+		tokenURI := BigIQURL+"/mgmt/cm/global/appsvcs-templates"
+
+		data = bytes.NewBuffer([]byte(declaration))
+
+		req, err := http.NewRequest("POST", tokenURI, data)
+		if err != nil {
+			log.Errorf("[as3_log] CIS failed to create HTTP request for BIG-IQ [error: %v]", err)
+			return string(body), err
+		}
+
+		req.Header.Set( "X-F5-Auth-Token", BigIQAuthToken)
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Errorf("[as3_log] CIS failed to POST HTTP Request to BIG-IQ [error: %v]", err)
+			return string(body), err
+		}
+
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			//Other then 200 status code
+			log.Errorf("[as3_log] Received Big-IQ error response [error: %v]", resp)
+			log.Errorf("[as3_log] Please Check and remove BIQ-AS3-TEMPLATE if already exists in BIQ !!! ")
+			return string(body), fmt.Errorf("Response Status %v", resp.StatusCode)
+		}
+		isBIQTemplatePres = true
+	}
+	if as3DeclerationObj := (templateObj.(map[string]interface{}))["BIQ_AS3_DECLERATION"]; nil != as3DeclerationObj{
+		as3Declaration, err := json.Marshal(as3DeclerationObj)
+		if err != nil {
+			log.Errorf("[as3_log] Failed to marshall BIQ_AS3_DECLERATION")
+			return "", err
+		}
+
+		return string(as3Declaration), nil
+	}
+
+	if isBIQTemplatePres{
+		return "", nil
+	}
+
+	return "", fmt.Errorf("Invalid Config Map configured for BIG IQ !!!")
+}
+
+
 // Clean the MetaData for routes processed in the past and
 // not considered now.
 func (appMgr *Manager) cleanupMetadata(route routev1.Route) {
@@ -554,6 +703,11 @@ func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string,
 		log.Errorf("[as3_log] Response body unmarshal failed: %v\n", err)
 		return string(body), false
 	}
+	if BigIQMode {
+		as3RestClient.oldChecksum = as3RestClient.newChecksum
+		return string(body), true
+	}
+
 	if resp.StatusCode == http.StatusOK {
 		//traverse all response results
 		results := (response["results"]).([]interface{})
