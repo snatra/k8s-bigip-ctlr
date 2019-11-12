@@ -1145,6 +1145,10 @@ func createPoliciesDecl(cfg *ResourceConfig, sharedApp as3Application) {
 
 			ep.Rules = append(ep.Rules, rulesData)
 		}
+
+		if cfg.MetaData.ResourceType == "ingress"{
+			pl.Name = strings.Title(pl.Name)
+		}
 		//Setting Endpoint_Policy Name
 		sharedApp[as3FormatedString(pl.Name)] = ep
 	}
@@ -1192,11 +1196,14 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 		svc.PolicyEndpoint = fmt.Sprintf("/%s/%s/%s",
 			DEFAULT_PARTITION,
 			as3SharedApplication,
-			cfg.Virtual.Policies[0].Name,
+			as3FormatedString(strings.Title(cfg.Virtual.Policies[0].Name)),
 		)
 	} else if numPolicies > 1 {
 		var peps []as3ResourcePointer
 		for _, pep := range cfg.Virtual.Policies {
+			if cfg.MetaData.ResourceType == "ingress"{
+				pep.Name = strings.Title(pep.Name)
+			}
 			svc.PolicyEndpoint = append(
 				peps,
 				as3ResourcePointer{
@@ -1350,7 +1357,8 @@ func createMonitorDecl(cfg *ResourceConfig, sharedApp as3Application) {
 
 //Replacing "-" with "_" for given string
 func as3FormatedString(str string) string {
-	return strings.Replace(str, "-", "_", -1)
+	formatted_string := strings.Replace(str, ".", "_", -1)
+	return strings.Replace(formatted_string, "-", "_", -1)
 }
 
 func createUpdateCABundle(prof CustomProfile, caBundleName string, sharedApp as3Application) {
