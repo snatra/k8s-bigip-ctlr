@@ -228,7 +228,7 @@ func _init() {
 			"Any other string will be used as a custom DNS server, either by name or IP address.")
 	defaultIngIP = kubeFlags.String("default-ingress-ip", "",
 		"Optional, the controller will configure a virtual server with this IP address for "+
-			"any Ingress with the annotation 'virtual-server.f5.com/ip:controller-default'.")
+			"any Ingress with the annotation 'virtual-server.f5.com/ip:controller-default'. ")
 	vsSnatPoolName = kubeFlags.String("vs-snat-pool-name", "",
 		"Optional, the controller will configure each virtual server to reference the "+
 			"pool with this name.")

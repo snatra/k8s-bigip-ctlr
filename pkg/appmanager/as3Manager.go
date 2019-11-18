@@ -78,10 +78,10 @@ func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 
 	// Validate AS3 Template
 	if appMgr.as3Validation == true {
-		log.Debugf("[as3] Start validating template")
+		log.Debugf("[AS3] Start validating template")
 
 		if ok := appMgr.validateAS3Template(template); !ok {
-			log.Errorf("[as3] Error validating template \n")
+			log.Errorf("[AS3] Error validating template \n")
 			return false
 		}
 	}
@@ -90,7 +90,7 @@ func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 	obj, ok := appMgr.getAS3ObjectFromTemplate(templateObj)
 
 	if !ok {
-		log.Errorf("[as3] Error processing template\n")
+		log.Errorf("[AS3] Error processing template\n")
 		return false
 	}
 
@@ -242,7 +242,7 @@ func getClass(obj interface{}) string {
 // When controller is in ClusterIP mode, returns a pool of Cluster IP Address and Service Port. Also, it accumulates
 // members for static ARP entry population.
 func (appMgr *Manager) getEndpointsForPool(tenant tenantName, app appName, pool poolName) pool {
-	log.Debugf("[as3_log] Discovering endpoints for pool: [%v -> %v -> %v]", tenant, app, pool)
+	log.Debugf("[AS3] Discovering endpoints for pool: [%v -> %v -> %v]", tenant, app, pool)
 
 	tenantKey := "cis.f5.com/as3-tenant="
 	appKey := "cis.f5.com/as3-app="
@@ -260,7 +260,7 @@ func (appMgr *Manager) getEndpointsForPool(tenant tenantName, app appName, pool 
 	services, err := appMgr.kubeClient.CoreV1().Services(v1.NamespaceAll).List(svcListOptions)
 
 	if err != nil {
-		log.Errorf("[as3] Error getting service list. %v", err)
+		log.Errorf("[AS3] Error getting service list. %v", err)
 		return nil
 	}
 
@@ -273,7 +273,7 @@ func (appMgr *Manager) getEndpointsForPool(tenant tenantName, app appName, pool 
 			svcNames += fmt.Sprintf("Service: %v, Namespace: %v \n", service.Name, service.Namespace)
 		}
 
-		log.Errorf("[as3] Multiple Services are tagged for this pool. Ignoring all endpoints.\n%v", svcNames)
+		log.Errorf("[AS3] Multiple Services are tagged for this pool. Ignoring all endpoints.\n%v", svcNames)
 		return members
 	}
 
@@ -285,7 +285,7 @@ func (appMgr *Manager) getEndpointsForPool(tenant tenantName, app appName, pool 
 				},
 			)
 			if err != nil {
-				log.Debugf("[as3] Error getting endpoints for service %v", service.Name)
+				log.Debugf("[AS3] Error getting endpoints for service %v", service.Name)
 				continue
 			}
 
@@ -314,7 +314,7 @@ func (appMgr *Manager) getEndpointsForPool(tenant tenantName, app appName, pool 
 			}
 		}
 
-		log.Debugf("[as3] Discovered members for service %v is %v", service.Name, members)
+		log.Debugf("[AS3] Discovered members for service %v is %v", service.Name, members)
 	}
 
 	return members
@@ -364,7 +364,7 @@ func (appMgr *Manager) buildAS3Declaration(obj as3Object, template as3Template) 
 	templateJSON := tmp.(map[string]interface{})
 
 	// traverse through the as3 object to fetch the list of services and get endpopints using the servicename
-	log.Debugf("[as3_log] Started Parsing the AS3 Object")
+	log.Debugf("[AS3] Started Parsing the AS3 Object")
 	for tnt, apps := range obj {
 		for app, pools := range apps {
 			for _, pn := range pools {
@@ -386,9 +386,9 @@ func (appMgr *Manager) buildAS3Declaration(obj as3Object, template as3Template) 
 
 	declaration, err := json.Marshal(templateJSON)
 	if err != nil {
-		log.Errorf("[as3_log] Issue marshalling AS3 Json")
+		log.Errorf("[AS3] Issue marshalling AS3 Json")
 	}
-	log.Debugf("[as3_log] AS3 Template is populated with the pool members")
+	log.Debugf("[AS3] AS3 Template is populated with the pool members")
 
 	return as3Declaration(declaration)
 
@@ -450,7 +450,7 @@ func (appMgr *Manager) updateAdmitStatus() {
 					}},
 				})
 				appMgr.routeClientV1.Routes(route.ObjectMeta.Namespace).UpdateStatus(route)
-				log.Debugf("[as3_log] Admitted Route -  %v", route.ObjectMeta.Name)
+				log.Debugf("[AS3] Admitted Route -  %v", route.ObjectMeta.Name)
 			}
 		}
 	}
@@ -461,7 +461,7 @@ func (appMgr *Manager) updateAdmitStatus() {
 	allNamespaces := ""
 	allRoutes, err := appMgr.routeClientV1.Routes(allNamespaces).List(allOptions)
 	if err != nil {
-		log.Errorf("[as3]Error listing Routes: %v", err)
+		log.Errorf("[AS3]Error listing Routes: %v", err)
 	}
 	for _, aRoute := range allRoutes.Items {
 		if !appMgr.containsProcessedRoute(aRoute) {
@@ -473,7 +473,7 @@ func (appMgr *Manager) updateAdmitStatus() {
 // TODO: Refactor
 // Takes AS3 Declaration and post it to BigIP
 func (appMgr *Manager) postAS3Declaration(declaration as3Declaration, tempAs3ConfigmapDecl as3Declaration, tempRouteConfigDecl as3ADC) {
-	log.Debugf("[as3_log] Processing AS3 POST call with AS3 Manager")
+	log.Debugf("[AS3] Processing AS3 POST call with AS3 Manager")
 	as3RC.baseURL = BigIPURL
 	_, ok := as3RC.restCallToBigIP("POST", "/mgmt/shared/appsvcs/declare", declaration, appMgr)
 	if ok {
@@ -490,14 +490,14 @@ func (appMgr *Manager) postAS3Declaration(declaration as3Declaration, tempAs3Con
 
 // Takes AS3 Declaration, method, API route and post it to BigIP
 func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string, declaration as3Declaration, appMgr *Manager) (string, bool) {
-	log.Debugf("[as3_log] REST call with AS3 Manager")
+	log.Debugf("[AS3] REST call with AS3 Manager")
 	hash := md5.New()
 	io.WriteString(hash, string(declaration))
 	as3RestClient.newChecksum = string(hash.Sum(nil))
 	timeout := time.Duration(60 * time.Second)
 	var body []byte
 	if as3RestClient.oldChecksum == as3RestClient.newChecksum {
-		log.Debugf("[as3_log] No change in declaration.")
+		log.Debugf("[AS3] No change in declaration.")
 		return string(body), true
 	}
 
@@ -513,7 +513,7 @@ func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string,
 
 	// Append our cert to the system pool
 	if ok := rootCAs.AppendCertsFromPEM(certs); !ok {
-		log.Debug("[as3_log] No certs appended, using system certs only")
+		log.Debug("[AS3] No certs appended, using system certs only")
 	}
 
 	tr := &http.Transport{
@@ -533,25 +533,25 @@ func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string,
 	}
 	req, err := http.NewRequest(method, as3RestClient.baseURL+route, data)
 	if err != nil {
-		log.Errorf("[as3_log] Creating new HTTP request error: %v ", err)
+		log.Errorf("[AS3] Creating new HTTP request error: %v ", err)
 		return string(body), false
 	}
 	req.SetBasicAuth(BigIPUsername, BigIPPassword)
 	resp, err := as3RestClient.client.Do(req)
 	if err != nil {
-		log.Errorf("[as3_log] REST call error: %v ", err)
+		log.Errorf("[AS3] REST call error: %v ", err)
 		return string(body), false
 	}
 	defer resp.Body.Close()
 	body, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Errorf("[as3_log] REST call response error: %v ", err)
+		log.Errorf("[AS3] REST call response error: %v ", err)
 		return string(body), false
 	}
 	var response map[string]interface{}
 	err = json.Unmarshal([]byte(body), &response)
 	if err != nil {
-		log.Errorf("[as3_log] Response body unmarshal failed: %v\n", err)
+		log.Errorf("[AS3] Response body unmarshal failed: %v\n", err)
 		return string(body), false
 	}
 	if resp.StatusCode == http.StatusOK {
@@ -560,8 +560,8 @@ func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string,
 		for _, value := range results {
 			v := value.(map[string]interface{})
 			//log result with code, tenant and message
-			log.Debugf("[as3_log] Response from Big-IP")
-			log.Debugf("[as3_log] code: %v --- tenant:%v --- message: %v", v["code"], v["tenant"], v["message"])
+			log.Debugf("[AS3] Response from Big-IP")
+			log.Debugf("[AS3] code: %v --- tenant:%v --- message: %v", v["code"], v["tenant"], v["message"])
 		}
 		as3RestClient.oldChecksum = as3RestClient.newChecksum
 		return string(body), true
@@ -571,7 +571,7 @@ func (as3RestClient *AS3RESTClient) restCallToBigIP(method string, route string,
 		for _, value := range results {
 			v := value.(map[string]interface{})
 			//log result with code, tenant and message
-			log.Debugf("[as3_log] Big-IP Response code: %v,Response:%v, Message: %v", v["code"], v["response"], v["message"])
+			log.Debugf("[AS3] Big-IP Response code: %v,Response:%v, Message: %v", v["code"], v["response"], v["message"])
 		}
 	} else {
 		log.Errorf("[AS3_log] Big-IP Responded with error code: %v", resp.StatusCode)
@@ -588,14 +588,14 @@ func (appMgr *Manager) getCertFromConfigMap(cfgmap string) {
 	certificates = ""
 	namespaceCfgmapSlice := strings.Split(cfgmap, "/")
 	if len(namespaceCfgmapSlice) < 2 {
-		log.Debugf("[as3_log] Invalid trusted-certs-cfgmap option provided.")
+		log.Debugf("[AS3] Invalid trusted-certs-cfgmap option provided.")
 	} else {
 		certs := ""
 		namespace := namespaceCfgmapSlice[0]
 		cfgmapName := namespaceCfgmapSlice[1]
 		cm, err := appMgr.kubeClient.CoreV1().ConfigMaps(namespace).Get(cfgmapName, metaV1.GetOptions{})
 		if err != nil {
-			log.Debugf("[as3_log] Reading certificate from configmap error: %v", err)
+			log.Debugf("[AS3] Reading certificate from configmap error: %v", err)
 		} else {
 			//Fetching all certificates from configmap
 			for _, v := range cm.Data {
@@ -615,7 +615,7 @@ func (appMgr *Manager) SetupAS3Informers() error {
 	// namespace is Empty to create watchers for all namespaces
 	namespace := v1.NamespaceAll
 
-	log.Debug("[as3] Stated creating AS3 Informers")
+	log.Debug("[AS3] Stated creating AS3 Informers")
 	allOptions := func(options *metaV1.ListOptions) {
 		options.LabelSelector = ""
 	}
@@ -752,7 +752,7 @@ func (appMgr *Manager) checkValidAS3ConfigMap(obj interface{}) (
 	cm := obj.(*v1.ConfigMap)
 	namespace := cm.ObjectMeta.Namespace
 
-	log.Debugf("[as3_log] Found AS3 ConfigMap - %s.", cm.ObjectMeta.Name)
+	log.Debugf("[AS3] Found AS3 ConfigMap - %s.", cm.ObjectMeta.Name)
 	key := &serviceQueueKey{
 		Namespace: namespace,
 		AS3Name:   cm.ObjectMeta.Name,
@@ -831,7 +831,7 @@ func (appMgr *Manager) getUnifiedAS3Declaration(as3CfgmapDecl as3Declaration, ro
 
 	unifiedDecl, err := json.Marshal(as3Config)
 	if err != nil {
-		log.Debugf("[as3] Unified declaration: %v\n", err)
+		log.Debugf("[AS3] Unified declaration: %v\n", err)
 	}
 	return as3Declaration(string(unifiedDecl)), true
 }
@@ -859,7 +859,7 @@ func (appMgr *Manager) generateAS3RouteDeclaration() as3ADC {
 	appMgr.processCustomProfilesForAS3(sharedApp)
 
 	// Process RouteProfiles
-	appMgr.processRouteProfilesForAS3(sharedApp)
+	appMgr.processProfilesForAS3(sharedApp)
 
 	// Process IRules
 	appMgr.processIRulesForAS3(sharedApp)
@@ -977,26 +977,61 @@ func (appMgr *Manager) processCustomProfilesForAS3(sharedApp as3Application) {
 	}
 }
 
-func (appMgr *Manager) processRouteProfilesForAS3(sharedApp as3Application) {
+func processRouteTLSProfilesForAS3(metadata *metaData, svc *as3Service) {
+	for key, val := range metadata.RouteProfs {
+		switch key.Context {
+		case customProfileClient:
+			// Incoming traffic (clientssl) from a web client will be handled by ServerTLS in AS3
+			svc.ServerTLS = &as3ResourcePointer{
+				BigIP: val,
+			}
+			updateVirtualToHTTPS(svc)
+		case customProfileServer:
+			// Outgoing traffic (serverssl) to BackEnd Servers from BigIP will be handled by ClientTLS in AS3
+			svc.ClientTLS = &as3ResourcePointer{
+				BigIP: val,
+			}
+			updateVirtualToHTTPS(svc)
+		}
+	}
+}
+
+func processIngressTLSProfilesForAS3(virtual *Virtual, svc *as3Service) {
+	// lets discard BIGIP profile creation when there exists a custom profile.
+	for _, profile := range virtual.Profiles {
+		if profile.Partition == "Common" {
+			switch profile.Context {
+			case customProfileClient:
+				// Incoming traffic (clientssl) from a web client will be handled by ServerTLS in AS3
+				svc.ServerTLS = &as3ResourcePointer{
+					BigIP: fmt.Sprintf("/%v/%v", profile.Partition, profile.Name),
+				}
+				updateVirtualToHTTPS(svc)
+			case customProfileServer:
+				// Outgoing traffic (serverssl) to BackEnd Servers from BigIP will be handled by ClientTLS in AS3
+				svc.ClientTLS = &as3ResourcePointer{
+					BigIP: fmt.Sprintf("/%v/%v", profile.Partition, profile.Name),
+				}
+				updateVirtualToHTTPS(svc)
+			}
+		}
+
+	}
+
+}
+
+func (appMgr *Manager) processProfilesForAS3(sharedApp as3Application) {
 	// Processes RouteProfs to create AS3 Declaration for Route annotations
 	// Override/Set ServerTLS/ClientTLS in AS3 Service as annotation takes higher priority
 	for svcName, cfg := range appMgr.resources.rsMap {
 		if svc, ok := sharedApp[as3FormatedString(svcName)].(*as3Service); ok {
-			for key, val := range cfg.MetaData.RouteProfs {
-				switch key.Context {
-				case customProfileClient:
-					// Incoming traffic (clientssl) from a web client will be handled by ServerTLS in AS3
-					svc.ServerTLS = &as3ResourcePointer{
-						BigIP: val,
-					}
-					updateVirtualToHTTPS(svc)
-				case customProfileServer:
-					// Outgoing traffic (serverssl) to BackEnd Servers from BigIP will be handled by ClientTLS in AS3
-					svc.ClientTLS = &as3ResourcePointer{
-						BigIP: val,
-					}
-					updateVirtualToHTTPS(svc)
-				}
+			switch cfg.MetaData.ResourceType {
+			case resourceTypeRoute:
+				processRouteTLSProfilesForAS3(&cfg.MetaData, svc)
+			case resourceTypeIngress:
+				processIngressTLSProfilesForAS3(&cfg.Virtual, svc)
+			default:
+				log.Warningf("Unsupported resource type: %v", cfg.MetaData.ResourceType)
 			}
 		}
 	}
@@ -1147,6 +1182,9 @@ func createPoliciesDecl(cfg *ResourceConfig, sharedApp as3Application) {
 
 			ep.Rules = append(ep.Rules, rulesData)
 		}
+		if cfg.MetaData.ResourceType == "ingress" {
+			pl.Name = strings.Title(pl.Name)
+		}
 		//Setting Endpoint_Policy Name
 		sharedApp[as3FormatedString(pl.Name)] = ep
 	}
@@ -1190,15 +1228,18 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 	svc := &as3Service{}
 
 	numPolicies := len(cfg.Virtual.Policies)
-	if numPolicies == 1 {
+	switch {
+	case numPolicies == 1:
 		svc.PolicyEndpoint = fmt.Sprintf("/%s/%s/%s",
 			DEFAULT_PARTITION,
 			as3SharedApplication,
-			cfg.Virtual.Policies[0].Name,
-		)
-	} else if numPolicies > 1 {
+			as3FormatedString(strings.Title(cfg.Virtual.Policies[0].Name)))
+	case numPolicies > 1:
 		var peps []as3ResourcePointer
 		for _, pep := range cfg.Virtual.Policies {
+			if cfg.MetaData.ResourceType == "ingress" {
+				pep.Name = strings.Title(pep.Name)
+			}
 			svc.PolicyEndpoint = append(
 				peps,
 				as3ResourcePointer{
@@ -1211,6 +1252,15 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			)
 		}
 		svc.PolicyEndpoint = peps
+	case numPolicies == 0:
+		// No policies since we need to handle the pool name.
+		ps := strings.Split(cfg.Virtual.PoolName, "/")
+		if cfg.Virtual.PoolName != "" {
+			svc.Pool = fmt.Sprintf("/%s/%s/%s",
+				DEFAULT_PARTITION,
+				as3SharedApplication,
+				as3FormatedString(ps[len(ps)-1]))
+		}
 	}
 
 	svc.Layer4 = cfg.Virtual.IpProtocol
@@ -1235,10 +1285,16 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 
 	destination := strings.Split(cfg.Virtual.Destination, "/")
 	ipPort := strings.Split(destination[len(destination)-1], ":")
-	va := append(svc.VirtualAddresses, ipPort[0])
-	svc.VirtualAddresses = va
-	port, _ := strconv.Atoi(ipPort[1])
-	svc.VirtualPort = port
+	// verify that ip address and port exists else return error.
+	if len(ipPort) == 2 {
+		va := append(svc.VirtualAddresses, ipPort[0])
+		svc.VirtualAddresses = va
+		port, _ := strconv.Atoi(ipPort[1])
+		svc.VirtualPort = port
+	} else {
+		log.Error("Invalid Virtual Server Destination IP address/Port.")
+	}
+
 	svc.SNAT = "auto"
 	for _, v := range cfg.Virtual.IRules {
 		splits := strings.Split(v, "/")
@@ -1284,6 +1340,20 @@ func createRouteRuleCondition(rl *Rule, rulesData *as3Rule) {
 			if c.Equals {
 				condition.PathSegment.Operand = "equals"
 			}
+		} else if c.Path {
+			condition.Path = &as3PolicyCompareString{
+				Values: c.Values,
+			}
+			if c.Name != "" {
+				condition.Name = c.Name
+			}
+			condition.Index = c.Index
+			if c.HTTPURI {
+				condition.Type = "httpUri"
+			}
+			if c.Equals {
+				condition.Path.Operand = "equals"
+			}
 		}
 
 		if c.Request {
@@ -1304,12 +1374,38 @@ func createRouteRuleAction(rl *Rule, rulesData *as3Rule) {
 		if v.Request {
 			action.Event = "request"
 		}
-
+		if v.Redirect {
+			action.Type = "httpRedirect"
+		}
+		if v.HTTPHost {
+			action.Type = "httpHeader"
+		}
+		if v.HTTPURI {
+			action.Type = "httpUri"
+		}
+		if v.Location != "" {
+			action.Location = v.Location
+		}
+		// Handle hostname rewrite.
+		if v.Replace && v.HTTPHost {
+			action.Replace = &as3ActionReplaceMap{
+				Value: v.Value,
+				Name:  "host",
+			}
+		}
+		// handle uri rewrite.
+		if v.Replace && v.HTTPURI {
+			action.Replace = &as3ActionReplaceMap{
+				Value: v.Value,
+			}
+		}
 		p := strings.Split(v.Pool, "/")
-		action.Select = &as3ActionForwardSelect{
-			Pool: &as3ResourcePointer{
-				Use: as3FormatedString(p[len(p)-1]),
-			},
+		if v.Pool != "" {
+			action.Select = &as3ActionForwardSelect{
+				Pool: &as3ResourcePointer{
+					Use: as3FormatedString(p[len(p)-1]),
+				},
+			}
 		}
 		rulesData.Actions = append(rulesData.Actions, action)
 	}
@@ -1352,7 +1448,8 @@ func createMonitorDecl(cfg *ResourceConfig, sharedApp as3Application) {
 
 //Replacing "-" with "_" for given string
 func as3FormatedString(str string) string {
-	return strings.Replace(str, "-", "_", -1)
+	formatted_string := strings.Replace(str, ".", "_", -1)
+	return strings.Replace(formatted_string, "-", "_", -1)
 }
 
 func createUpdateCABundle(prof CustomProfile, caBundleName string, sharedApp as3Application) {

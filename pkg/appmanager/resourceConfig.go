@@ -35,7 +35,6 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -64,6 +63,10 @@ const schemaIndicator string = "f5schemadb://"
 const customProfileAll string = "all"
 const customProfileClient string = "clientside"
 const customProfileServer string = "serverside"
+
+// Constants for Resource Types
+const resourceTypeIngress string = "ingress"
+const resourceTypeRoute string = "route"
 
 // Constants for CustomProfile.PeerCertMode
 const peerCertRequired = "require"
@@ -1473,6 +1476,15 @@ func (appMgr *Manager) createRSConfigFromIngress(
 		} else {
 			bindAddr = addr
 		}
+	} else {
+		// if no annotation is provided, take the IP from controller config.
+		if defaultIP != "" && defaultIP != "0.0.0.0" {
+			bindAddr = defaultIP
+		} else {
+			// Ingress IP is not given in either as controller deployment option or in annotation, exit with error log.
+			log.Error("Ingress IP Address is not provided. Unable to process ingress resources. " +
+				"Provide either 'default-ingress-ip' in controller deployment or configure ingress IP address with annotation 'virtual-server.f5.com/ip'.")
+		}
 	}
 	cfg.Virtual.Name = formatIngressVSName(bindAddr, pStruct.port)
 
@@ -1649,6 +1661,7 @@ func (appMgr *Manager) handleIngressTls(
 	ing *v1beta1.Ingress,
 	svcFwdRulesMap ServiceFwdRuleMap,
 ) bool {
+
 	if 0 == len(ing.Spec.TLS) {
 		// Nothing to do if no TLS section
 		return false
@@ -1674,9 +1687,8 @@ func (appMgr *Manager) handleIngressTls(
 		for _, tls := range ing.Spec.TLS {
 			// Check if profile is contained in a Secret
 			if appMgr.useSecrets {
-				secret, err := appMgr.kubeClient.CoreV1().Secrets(ing.ObjectMeta.Namespace).
-					Get(tls.SecretName, metav1.GetOptions{})
-				if err != nil {
+				secret := appMgr.IngressSSLCtxt[tls.SecretName]
+				if secret == nil {
 					// No secret, so we assume the profile is a BIG-IP default
 					log.Debugf("No Secret with name '%s' in namespace '%s', "+
 						"parsing secretName as path instead.",
@@ -1686,7 +1698,7 @@ func (appMgr *Manager) handleIngressTls(
 					rsCfg.Virtual.AddOrUpdateProfile(profRef)
 					continue
 				}
-				err, cpUpdated = appMgr.createSecretSslProfile(rsCfg, secret)
+				err, cpUpdated := appMgr.createSecretSslProfile(rsCfg, secret)
 				if err != nil {
 					log.Warningf("%v", err)
 					continue
