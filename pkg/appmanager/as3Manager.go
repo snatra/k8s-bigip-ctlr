@@ -594,7 +594,7 @@ func (appMgr *Manager) getCertFromConfigMap(cfgmap string) {
 	certificates = ""
 	namespaceCfgmapSlice := strings.Split(cfgmap, "/")
 	if len(namespaceCfgmapSlice) != 2 {
-		log.Debugf("[as3_log] Invalid trusted-certs-cfgmap option provided.")
+		log.Debugf("[AS3] Invalid trusted-certs-cfgmap option provided.")
 	} else {
 		certs := ""
 		cm, err := appMgr.getConfigMapUsingNamespaceAndName(namespaceCfgmapSlice[0], namespaceCfgmapSlice[1])
