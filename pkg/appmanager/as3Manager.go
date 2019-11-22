@@ -72,7 +72,7 @@ var epbuffer map[string]struct{}
 var schemaLoader gojsonschema.JSONLoader
 var As3SchemaLatest string
 var As3SchemaFlag string
-
+var tempResourceType string
 // Takes an AS3 Template and perform service discovery with Kubernetes to generate AS3 Declaration
 func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 
@@ -98,6 +98,7 @@ func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 	epbuffer = make(map[string]struct{}, 0)
 
 	declaration := appMgr.buildAS3Declaration(obj, templateObj)
+	appMgr.as3Members = buffer
 
 	appMgr.watchedAS3Endpoints = epbuffer
 	tempAs3ConfigmapDecl := declaration
@@ -948,7 +949,7 @@ func (appMgr *Manager) processIRulesForAS3(sharedApp as3Application) {
 		iRule := &as3IRules{}
 		iRule.Class = "iRule"
 		iRule.IRule = v.Code
-		sharedApp[as3FormatedString(v.Name)] = iRule
+		sharedApp[as3FormatedString(v.Name, tempResourceType)] = iRule
 	}
 }
 
@@ -966,11 +967,11 @@ func (appMgr *Manager) processDataGroupForAS3(sharedApp as3Application) {
 				if val, ok := getDGRecordValueForAS3(idk.Name, sharedApp); ok {
 					rec.Value = val
 				} else {
-					rec.Value = as3FormatedString(record.Data)
+					rec.Value = as3FormatedString(record.Data, tempResourceType)
 				}
 				dgMap.Records = append(dgMap.Records, rec)
 			}
-			sharedApp[as3FormatedString(dg.Name)] = dgMap
+			sharedApp[as3FormatedString(dg.Name, tempResourceType)] = dgMap
 		}
 	}
 }
@@ -999,7 +1000,7 @@ func (appMgr *Manager) processCustomProfilesForAS3(sharedApp as3Application) {
 	// TLS Certificates are available in CustomProfiles
 	for key, prof := range appMgr.customProfiles.profs {
 		// Create TLSServer and Certificate for each profile
-		svcName := as3FormatedString(key.ResourceName)
+		svcName := as3FormatedString(key.ResourceName, tempResourceType)
 		if svcName == "" {
 			continue
 		}
@@ -1069,7 +1070,7 @@ func (appMgr *Manager) processProfilesForAS3(sharedApp as3Application) {
 	// Processes RouteProfs to create AS3 Declaration for Route annotations
 	// Override/Set ServerTLS/ClientTLS in AS3 Service as annotation takes higher priority
 	for svcName, cfg := range appMgr.resources.rsMap {
-		if svc, ok := sharedApp[as3FormatedString(svcName)].(*as3Service); ok {
+		if svc, ok := sharedApp[as3FormatedString(svcName, cfg.MetaData.ResourceType)].(*as3Service); ok {
 			switch cfg.MetaData.ResourceType {
 			case resourceTypeRoute:
 				processRouteTLSProfilesForAS3(&cfg.MetaData, svc)
@@ -1209,6 +1210,7 @@ func updatePolicyWithWAF(ep *as3EndpointPolicy, rec Record, res F5Resources) {
 func createPoliciesDecl(cfg *ResourceConfig, sharedApp as3Application) {
 	for _, pl := range cfg.Policies {
 		//Create EndpointPolicy
+		tempResourceType = cfg.MetaData.ResourceType
 		ep := &as3EndpointPolicy{}
 		for _, rl := range pl.Rules {
 
@@ -1217,13 +1219,13 @@ func createPoliciesDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			ep.Strategy = s[len(s)-1]
 
 			//Create rules
-			rulesData := &as3Rule{Name: as3FormatedString(rl.Name)}
+			rulesData := &as3Rule{Name: as3FormatedString(rl.Name, cfg.MetaData.ResourceType)}
 
 			//Create condition object
 			createRouteRuleCondition(rl, rulesData)
 
 			//Creat action object
-			createRouteRuleAction(rl, rulesData)
+			createRouteRuleAction(rl, rulesData, cfg.MetaData.ResourceType)
 
 			ep.Rules = append(ep.Rules, rulesData)
 		}
@@ -1231,7 +1233,7 @@ func createPoliciesDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			pl.Name = strings.Title(pl.Name)
 		}
 		//Setting Endpoint_Policy Name
-		sharedApp[as3FormatedString(pl.Name)] = ep
+		sharedApp[as3FormatedString(pl.Name, cfg.MetaData.ResourceType)] = ep
 	}
 }
 
@@ -1254,11 +1256,11 @@ func createPoolDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			monitor.Use = fmt.Sprintf("/%s/%s/%s",
 				DEFAULT_PARTITION,
 				as3SharedApplication,
-				as3FormatedString(use[len(use)-1]),
+				as3FormatedString(use[len(use)-1], cfg.MetaData.ResourceType),
 			)
 			pool.Monitors = append(pool.Monitors, monitor)
 		}
-		sharedApp[as3FormatedString(v.Name)] = pool
+		sharedApp[as3FormatedString(v.Name, cfg.MetaData.ResourceType)] = pool
 	}
 }
 
@@ -1282,7 +1284,7 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 		svc.PolicyEndpoint = fmt.Sprintf("/%s/%s/%s",
 			DEFAULT_PARTITION,
 			as3SharedApplication,
-			as3FormatedString(policyName))
+			as3FormatedString(policyName, cfg.MetaData.ResourceType))
 	case numPolicies > 1:
 		var peps []as3ResourcePointer
 		for _, pep := range cfg.Virtual.Policies {
@@ -1308,7 +1310,7 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			svc.Pool = fmt.Sprintf("/%s/%s/%s",
 				DEFAULT_PARTITION,
 				as3SharedApplication,
-				as3FormatedString(ps[len(ps)-1]))
+				as3FormatedString(ps[len(ps)-1], cfg.MetaData.ResourceType))
 		}
 	}
 
@@ -1354,10 +1356,10 @@ func createServiceDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			}
 			updateVirtualToHTTPS(svc)
 		}
-		svc.IRules = append(svc.IRules, as3FormatedString(iRuleName))
+		svc.IRules = append(svc.IRules, as3FormatedString(iRuleName, cfg.MetaData.ResourceType))
 	}
 
-	sharedApp[as3FormatedString(cfg.Virtual.Name)] = svc
+	sharedApp[as3FormatedString(cfg.Virtual.Name, cfg.MetaData.ResourceType)] = svc
 }
 
 // Create AS3 Rule Condition for Route
@@ -1413,7 +1415,7 @@ func createRouteRuleCondition(rl *Rule, rulesData *as3Rule) {
 }
 
 // Create AS3 Rule Action for Route
-func createRouteRuleAction(rl *Rule, rulesData *as3Rule) {
+func createRouteRuleAction(rl *Rule, rulesData *as3Rule, resourceType string) {
 	for _, v := range rl.Actions {
 		action := &as3Action{}
 		if v.Forward {
@@ -1451,7 +1453,7 @@ func createRouteRuleAction(rl *Rule, rulesData *as3Rule) {
 		if v.Pool != "" {
 			action.Select = &as3ActionForwardSelect{
 				Pool: &as3ResourcePointer{
-					Use: as3FormatedString(p[len(p)-1]),
+					Use: as3FormatedString(p[len(p)-1], resourceType),
 				},
 			}
 		}
@@ -1489,15 +1491,24 @@ func createMonitorDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			adaptiveFalse := false
 			monitor.Adaptive = &adaptiveFalse
 		}
-		sharedApp[as3FormatedString(v.Name)] = monitor
+		sharedApp[as3FormatedString(v.Name, cfg.MetaData.ResourceType)] = monitor
 	}
 
 }
 
 //Replacing "-" with "_" for given string
-func as3FormatedString(str string) string {
-	formatted_string := strings.Replace(str, ".", "_", -1)
-	return strings.Replace(formatted_string, "-", "_", -1)
+func as3FormatedString(str, rsrcType string) string {
+	var formattedString string
+	switch rsrcType {
+	case resourceTypeRoute:
+		formattedString = strings.Replace(str, "-", "_", -1)
+	case resourceTypeIngress:
+		formattedString = strings.Replace(str, ".", "_", -1)
+		formattedString = strings.Replace(formattedString, "-", "_", -1)
+	default:
+		formattedString = strings.Replace(str, "-", "_", -1)
+	}
+	return formattedString
 }
 
 func createUpdateCABundle(prof CustomProfile, caBundleName string, sharedApp as3Application) {
@@ -1525,7 +1536,7 @@ func createCertificateDecl(prof CustomProfile, sharedApp as3Application) {
 			ChainCA:     prof.CAFile,
 		}
 
-		sharedApp[as3FormatedString(prof.Name)] = cert
+		sharedApp[as3FormatedString(prof.Name, tempResourceType)] = cert
 	}
 }
 
@@ -1535,7 +1546,7 @@ func createUpdateTLSServer(prof CustomProfile, svcName string, sharedApp as3Appl
 	if "" != prof.Cert && "" != prof.Key {
 		svc := sharedApp[svcName].(*as3Service)
 		tlsServerName := fmt.Sprintf("%s_tls_server", svcName)
-		certName := as3FormatedString(prof.Name)
+		certName := as3FormatedString(prof.Name, tempResourceType)
 
 		tlsServer, ok := sharedApp[tlsServerName].(*as3TLSServer)
 		if !ok {
