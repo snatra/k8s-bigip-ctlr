@@ -72,7 +72,6 @@ var epbuffer map[string]struct{}
 var schemaLoader gojsonschema.JSONLoader
 var As3SchemaLatest string
 var As3SchemaFlag string
-var tempResourceType string
 // Takes an AS3 Template and perform service discovery with Kubernetes to generate AS3 Declaration
 func (appMgr *Manager) processUserDefinedAS3(template string) bool {
 
@@ -936,7 +935,9 @@ func (appMgr *Manager) processResourcesForAS3(sharedApp as3Application) {
 		createMonitorDecl(cfg, sharedApp)
 
 		//Create pools
+		//buffer = make(map[Member]struct{}, 0)
 		createPoolDecl(cfg, sharedApp)
+		//appMgr.as3Members = buffer
 
 		//Create AS3 Service for virtual server
 		createServiceDecl(cfg, sharedApp)
@@ -949,7 +950,7 @@ func (appMgr *Manager) processIRulesForAS3(sharedApp as3Application) {
 		iRule := &as3IRules{}
 		iRule.Class = "iRule"
 		iRule.IRule = v.Code
-		sharedApp[as3FormatedString(v.Name, tempResourceType)] = iRule
+		sharedApp[as3FormatedString(v.Name, deriveResourceTypeFromAS3Value(v.Name))] = iRule
 	}
 }
 
@@ -967,11 +968,11 @@ func (appMgr *Manager) processDataGroupForAS3(sharedApp as3Application) {
 				if val, ok := getDGRecordValueForAS3(idk.Name, sharedApp); ok {
 					rec.Value = val
 				} else {
-					rec.Value = as3FormatedString(record.Data, tempResourceType)
+					rec.Value = as3FormatedString(record.Data, deriveResourceTypeFromAS3Value(record.Data))
 				}
 				dgMap.Records = append(dgMap.Records, rec)
 			}
-			sharedApp[as3FormatedString(dg.Name, tempResourceType)] = dgMap
+			sharedApp[as3FormatedString(dg.Name, "")] = dgMap
 		}
 	}
 }
@@ -1000,7 +1001,7 @@ func (appMgr *Manager) processCustomProfilesForAS3(sharedApp as3Application) {
 	// TLS Certificates are available in CustomProfiles
 	for key, prof := range appMgr.customProfiles.profs {
 		// Create TLSServer and Certificate for each profile
-		svcName := as3FormatedString(key.ResourceName, tempResourceType)
+		svcName := as3FormatedString(key.ResourceName, deriveResourceTypeFromAS3Value(key.ResourceName))
 		if svcName == "" {
 			continue
 		}
@@ -1210,7 +1211,6 @@ func updatePolicyWithWAF(ep *as3EndpointPolicy, rec Record, res F5Resources) {
 func createPoliciesDecl(cfg *ResourceConfig, sharedApp as3Application) {
 	for _, pl := range cfg.Policies {
 		//Create EndpointPolicy
-		tempResourceType = cfg.MetaData.ResourceType
 		ep := &as3EndpointPolicy{}
 		for _, rl := range pl.Rules {
 
@@ -1249,6 +1249,13 @@ func createPoolDecl(cfg *ResourceConfig, sharedApp as3Application) {
 			member.ServicePort = val.Port
 			member.ServerAddresses = append(member.ServerAddresses, val.Address)
 			pool.Members = append(pool.Members, member)
+
+			//if cfg.MetaData.ResourceType == "ingress" {
+			//	var ingPoolMember Member
+			//	ingPoolMember.Address = val.Address
+			//	ingPoolMember.Port = val.Port
+			//	buffer[ingPoolMember] = struct{}{}
+			//}
 		}
 		for _, val := range v.MonitorNames {
 			var monitor as3ResourcePointer
@@ -1500,8 +1507,6 @@ func createMonitorDecl(cfg *ResourceConfig, sharedApp as3Application) {
 func as3FormatedString(str, rsrcType string) string {
 	var formattedString string
 	switch rsrcType {
-	case resourceTypeRoute:
-		formattedString = strings.Replace(str, "-", "_", -1)
 	case resourceTypeIngress:
 		formattedString = strings.Replace(str, ".", "_", -1)
 		formattedString = strings.Replace(formattedString, "-", "_", -1)
@@ -1527,6 +1532,13 @@ func createUpdateCABundle(prof CustomProfile, caBundleName string, sharedApp as3
 	}
 }
 
+func deriveResourceTypeFromAS3Value(val string) string{
+	if strings.HasPrefix(val, "openshift_"){
+		return resourceTypeRoute
+	}
+	return resourceTypeIngress
+}
+
 func createCertificateDecl(prof CustomProfile, sharedApp as3Application) {
 	if "" != prof.Cert && "" != prof.Key {
 		cert := &as3Certificate{
@@ -1535,8 +1547,7 @@ func createCertificateDecl(prof CustomProfile, sharedApp as3Application) {
 			PrivateKey:  prof.Key,
 			ChainCA:     prof.CAFile,
 		}
-
-		sharedApp[as3FormatedString(prof.Name, tempResourceType)] = cert
+		sharedApp[as3FormatedString(prof.Name, deriveResourceTypeFromAS3Value(prof.Name))] = cert
 	}
 }
 
@@ -1546,7 +1557,7 @@ func createUpdateTLSServer(prof CustomProfile, svcName string, sharedApp as3Appl
 	if "" != prof.Cert && "" != prof.Key {
 		svc := sharedApp[svcName].(*as3Service)
 		tlsServerName := fmt.Sprintf("%s_tls_server", svcName)
-		certName := as3FormatedString(prof.Name, tempResourceType)
+		certName := as3FormatedString(prof.Name, deriveResourceTypeFromAS3Value(prof.Name))
 
 		tlsServer, ok := sharedApp[tlsServerName].(*as3TLSServer)
 		if !ok {
