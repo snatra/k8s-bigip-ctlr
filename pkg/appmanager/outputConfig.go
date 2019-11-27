@@ -259,7 +259,7 @@ func (appMgr *Manager) sendARPEntries() {
 
 		select {
 		case appMgr.eventChan <- allPoolMembers:
-			log.Debugf("AppManager wrote endpoints to VxlanMgr. %v", allPoolMembers)
+			log.Debugf("AppManager wrote endpoints to VxlanMgr")
 		case <-time.After(3 * time.Second):
 		}
 	}
