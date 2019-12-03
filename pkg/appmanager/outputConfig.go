@@ -256,11 +256,12 @@ func (appMgr *Manager) sendARPEntries() {
 	if appMgr.eventChan != nil {
 		for member := range appMgr.as3Members {
 			allPoolMembers = append(allPoolMembers, member)
+			log.Debugf("AppManager wrote endpoints to VxlanMgr CfgMAP %v", allPoolMembers)
 		}
 
 		select {
 		case appMgr.eventChan <- allPoolMembers:
-			log.Debugf("AppManager wrote endpoints to VxlanMgr")
+			log.Debugf("AppManager wrote endpoints to VxlanMgr INGRESS %v", allPoolMembers)
 		case <-time.After(3 * time.Second):
 		}
 	}
