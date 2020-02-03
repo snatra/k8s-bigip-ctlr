@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/F5Networks/k8s-bigip-ctlr/pkg/test"
+	"github.com/F5Networks/k8s-bigip-ctlr/pkg/agent"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -30,22 +31,23 @@ import (
 
 var _ = Describe("Routing Tests", func() {
 	It("orders routes", func() {
-		mw := &test.MockWriter{
-			FailStyle: test.Success,
-			Sections:  make(map[string]interface{}),
-		}
+		//mw := &test.MockWriter{
+		//	FailStyle: test.Success,
+		//	Sections:  make(map[string]interface{}),
+		//}
 
 		fakeClient := fake.NewSimpleClientset()
 		Expect(fakeClient).ToNot(BeNil(), "Mock client should not be nil.")
 
 		appMgr := newMockAppManager(&Params{
 			KubeClient:    fakeClient,
-			ConfigWriter:  mw,
+			//ConfigWriter:  mw,
 			restClient:    test.CreateFakeHTTPClient(),
 			RouteClientV1: fakeRouteClient.NewSimpleClientset().RouteV1(),
 			IsNodePort:    true,
 			ManageIngress: true,
 		})
+		appMgr.appMgr.AgentCIS = agent.CISAgentInterface(new(mockAgent))
 		err := appMgr.startNonLabelMode([]string{"test"})
 		Expect(err).To(BeNil())
 		defer appMgr.shutdown()
