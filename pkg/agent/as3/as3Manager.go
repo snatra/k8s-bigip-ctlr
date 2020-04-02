@@ -18,12 +18,14 @@ package as3
 
 import (
 	"encoding/json"
-	"github.com/F5Networks/k8s-bigip-ctlr/pkg/postmanager"
-	. "github.com/F5Networks/k8s-bigip-ctlr/pkg/resource"
-	log "github.com/F5Networks/k8s-bigip-ctlr/pkg/vlogger"
 	"io/ioutil"
 	"net/http"
 
+	// "github.com/F5Networks/k8s-bigip-ctlr/pkg/postmanager"
+	// "github.com/F5Networks/k8s-bigip-ctlr/pkg/postmanager"
+	. "github.com/F5Networks/k8s-bigip-ctlr/pkg/resource"
+	log "github.com/F5Networks/k8s-bigip-ctlr/pkg/vlogger"
+	routeclient "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	//routeapi "github.com/openshift/api/route/v1"
 )
 
@@ -52,18 +54,18 @@ const (
 	as3template          = "template"
 	// Constants for Resource Types
 	resourceTypeIngress string = "ingress"
-	resourceTypeRoute string = "route"
+	resourceTypeRoute   string = "route"
 	//resourceTypeCfgMap string = "cfgMap"
-	oprTypeCreate = "create"
-	oprTypeUpdate = "update"
-	oprTypeDelete = "delete"
+	oprTypeCreate      = "create"
+	oprTypeUpdate      = "update"
+	oprTypeDelete      = "delete"
 	as3SchemaLatestURL = "https://raw.githubusercontent.com/F5Networks/f5-appsvcs-extension/master/schema/latest/as3-schema.json"
-	as3SchemaFileName = "as3-schema-3.13.2-1-cis.json"
+	as3SchemaFileName  = "as3-schema-3.13.2-1-cis.json"
 )
 
 // TODO SNATRA Remove TEMORARY VARIABLE
-type endPoints struct{
-	members      []Member
+type endPoints struct {
+	members []Member
 }
 
 type AgentRequestConfig struct {
@@ -86,15 +88,14 @@ type AS3Config struct {
 
 // ActiveAS3ConfigMap user defined ConfigMap for global availability.
 type AS3ConfigMap struct {
-	Name       string         // AS3 specific ConfigMap name
-	Namespace  string         // AS3 specific ConfigMap namespace
-	OprType    string         // Operations like create/update/delete
-	State      int            // State of the configMap
-	cfg        string         // configuration in combination of "name/namespace" of cfgMap
-	tmpData    string         // Holds AS3 template received from cfgMap resource.
-	Data       as3Declaration // if AS3 Name is present, populate this with AS3 template data.
+	Name      string         // AS3 specific ConfigMap name
+	Namespace string         // AS3 specific ConfigMap namespace
+	OprType   string         // Operations like create/update/delete
+	State     int            // State of the configMap
+	cfg       string         // configuration in combination of "name/namespace" of cfgMap
+	tmpData   string         // Holds AS3 template received from cfgMap resource.
+	Data      as3Declaration // if AS3 Name is present, populate this with AS3 template data.
 }
-
 
 // AS3AS3Manager holds all the AS3 orchestration specific Data
 type AS3Manager struct {
@@ -106,32 +107,31 @@ type AS3Manager struct {
 	tls13CipherGroupReference string
 	ciphers                   string
 	// Active User Defined ConfigMap details
-	as3ActiveConfig           AS3Config
+	as3ActiveConfig AS3Config
 	// List of Watched Endpoints for user-defined AS3
-	watchedAS3Endpoints       map[string]struct{}
+	watchedAS3Endpoints map[string]struct{}
 	// Watched namespaces
 	// WatchedNS                 WatchedNamespaces
-	As3SchemaLatest           string
+	As3SchemaLatest string
 	// Override existing as3 declaration with this configmap
-	OverrideAS3Decl           string
+	OverrideAS3Decl string
 	// User defined AS3 declaration
-	UserDefinedAS3Decl        string
+	UserDefinedAS3Decl string
 	// Path of schemas reside locally
-	SchemaLocalPath           string
+	SchemaLocalPath string
 	// Flag to check schema validation using reference or string
-	As3SchemaFlag             bool
+	As3SchemaFlag bool
 	// Processed routes for updating Admit Status
 	// RoutesProcessed           RouteMap TODO this will move to CIS Core
 	// POSTs configuration to BIG-IP using AS3
-	PostManager               *postmanager.PostManager
+	PostManager *PostManager
 	// To put list of tenants in BIG-IP REST call URL that are in AS3 declaration
-	FilterTenants             bool
-	DefaultPartition          string
-	agentRequestChan          chan AgentRequestConfig
-	postmanager.Params
-	AgentRequestConfig// This is a temporary
+	FilterTenants    bool
+	DefaultPartition string
+	agentRequestChan chan AgentRequestConfig
+	// postmanager.Params
+	AgentRequestConfig // This is a temporary
 }
-
 
 // Struct to allow NewManager to receive all or only specific parameters.
 type Params struct {
@@ -144,21 +144,19 @@ type Params struct {
 	TLS13CipherGroupReference string
 	Ciphers                   string
 	//Agent                     string
-	OverrideAS3Decl           string
-	UserDefinedAS3Decl        string
-	SchemaLocalPath           string
-	FilterTenants             bool
-	BIGIPUsername             string
-	BIGIPPassword             string
-	BIGIPURL                  string
-	TrustedCerts              string
-	AS3PostDelay              int
+	OverrideAS3Decl    string
+	UserDefinedAS3Decl string
+	SchemaLocalPath    string
+	FilterTenants      bool
+	BIGIPUsername      string
+	BIGIPPassword      string
+	BIGIPURL           string
+	TrustedCerts       string
+	AS3PostDelay       int
 	//Log the AS3 response body in Controller logs
-	LogResponse               bool
-	//RouteClientV1 routeclient.RouteV1Interface
+	LogResponse   bool
+	RouteClientV1 routeclient.RouteV1Interface
 }
-
-
 
 // Create and return a new app manager that meets the Manager interface
 func NewAS3Manager(params *Params) *AS3Manager {
@@ -177,20 +175,17 @@ func NewAS3Manager(params *Params) *AS3Manager {
 			configmap:         AS3ConfigMap{cfg: params.OverrideAS3Decl},
 			overrideConfigmap: AS3ConfigMap{cfg: params.UserDefinedAS3Decl},
 		},
-		PostManager: postmanager.NewPostManager(postmanager.Params{
-				BIGIPUsername: params.BIGIPUsername,
-				BIGIPPassword: params.BIGIPPassword,
-				BIGIPURL:      params.BIGIPURL,
-				TrustedCerts:  params.TrustedCerts,
-				SSLInsecure:   params.SSLInsecure,
-				AS3PostDelay:  params.AS3PostDelay,
-				LogResponse:   params.LogResponse}),
+		PostManager: NewPostManager(PostParams{
+			BIGIPUsername: params.BIGIPUsername,
+			BIGIPPassword: params.BIGIPPassword,
+			BIGIPURL:      params.BIGIPURL,
+			TrustedCerts:  params.TrustedCerts,
+			SSLInsecure:   params.SSLInsecure,
+			AS3PostDelay:  params.AS3PostDelay,
+			LogResponse:   params.LogResponse}),
 	}
 	return &AS3Manager
 }
-
-
-
 
 func (as3Mgr *AS3Manager) postAS3Declaration() {
 
@@ -211,8 +206,8 @@ func (as3Mgr *AS3Manager) postAS3Declaration() {
 }
 
 func (as3Mgr *AS3Manager) postAS3Config(tempAS3Config AS3Config) {
-	unifiedDecl := tempAS3Config.getUnifiedDeclaration();
-	if unifiedDecl == ""{
+	unifiedDecl := tempAS3Config.getUnifiedDeclaration()
+	if unifiedDecl == "" {
 		return
 	}
 
@@ -324,13 +319,13 @@ func (as3Mgr *AS3Manager) DeleteAS3Partition(partition string) {
 	as3Mgr.postAS3Config(tempAS3Config)
 }
 
-func (c AS3Config) Init (partition string){
+func (c AS3Config) Init(partition string) {
 	c.adc.initDefault(partition)
 	c.configmap.reset()
 	c.overrideConfigmap.reset()
 }
 
-func (as3Mgr *AS3Manager) FetchAS3Schema() error{
+func (as3Mgr *AS3Manager) FetchAS3Schema() error {
 
 	res, err := http.Get(as3SchemaLatestURL)
 	if err != nil {
