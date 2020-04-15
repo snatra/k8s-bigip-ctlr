@@ -23,14 +23,13 @@ import (
 	"reflect"
 	"strings"
 
-	log "github.com/F5Networks/k8s-bigip-ctlr/pkg/vlogger"
 	. "github.com/F5Networks/k8s-bigip-ctlr/pkg/resource"
+	log "github.com/F5Networks/k8s-bigip-ctlr/pkg/vlogger"
 
 	routeapi "github.com/openshift/api/route/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 )
-
 
 func (appMgr *Manager) setClientSslProfile(
 	stats *vsSyncStats,
@@ -75,8 +74,11 @@ func (appMgr *Manager) setClientSslProfile(
 	// If annotation is set, use that profile instead of Route profile.
 	if prof, ok := route.ObjectMeta.Annotations[F5ClientSslProfileAnnotation]; ok {
 		if nil != route.Spec.TLS {
-			log.Warningf("[CORE] Both clientssl annotation and cert/key provided for Route: %s, "+
-				"using annotation.", route.ObjectMeta.Name)
+			if "" != route.Spec.TLS.Certificate || "" != route.Spec.TLS.Key {
+				log.Warningf("[CORE] Both clientssl annotation and cert/key provided for Route: %s, "+
+					"using annotation.", route.ObjectMeta.Name)
+			}
+
 			// Delete existing Route profile if it exists
 			profRef := MakeRouteClientSSLProfileRef(
 				rsCfg.Virtual.Partition, sKey.Namespace, route.ObjectMeta.Name)
