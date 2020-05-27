@@ -82,11 +82,10 @@ func (am *AS3Manager) generateUserDefinedAS3Decleration(cm AgentCfgMap) as3Decla
 	}
 
 	_, found := obj[tenantName(DEFAULT_PARTITION)]
-	_, foundNetworkPartition := obj[tenantName(strings.TrimSuffix(DEFAULT_PARTITION, "_AS3"))]
-	if found || foundNetworkPartition {
+	if found {
 		log.Error("[AS3] Error in processing the template")
 		log.Errorf("[AS3] CIS managed partitions <%s> and <%s> should not be used in ConfigMap as Tenants",
-			DEFAULT_PARTITION, strings.TrimSuffix(DEFAULT_PARTITION, "_AS3"))
+			DEFAULT_PARTITION)
 		return ""
 	}
 
@@ -201,7 +200,7 @@ func (am *AS3Manager) buildAS3Declaration(obj as3Object, template as3Template, c
 				ips := make([]string, 0)
 				for _, v := range eps {
 					ips = append(ips, v.Address)
-					if _, ok := am.ResourceResponse.Members[v]; !ok {
+					if _, ok := am.PoolMembers[v]; !ok {
 						isPoolUpdated = true
 					}
 					members[v] = struct{}{}
@@ -216,7 +215,7 @@ func (am *AS3Manager) buildAS3Declaration(obj as3Object, template as3Template, c
 		}
 	}
 
-	am.ResourceResponse.Members = members
+	am.poolMembers = members
 
 	declaration, err := json.Marshal(templateJSON)
 

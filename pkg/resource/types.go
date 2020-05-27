@@ -413,9 +413,7 @@ type (
 	}
 
 	ResourceResponse struct {
-		AdmitStatus bool
-		FdbRecords  bool
-		Members     map[Member]struct{}
+		IsResponseSuccessful  bool
 	}
 
 	MessageRequest struct {

@@ -70,6 +70,7 @@ type globalSection struct {
 	LogLevel       string `json:"log-level,omitempty"`
 	VerifyInterval int    `json:"verify-interval,omitempty"`
 	VXLANPartition string `json:"vxlan-partition,omitempty"`
+	DisableLTM     bool   `json:"disable-ltm,omitempty"`
 }
 
 type bigIPSection struct {
@@ -730,7 +731,6 @@ func main() {
 	resource.DEFAULT_PARTITION = (*bigIPPartitions)[0]
 	dgPath = resource.DEFAULT_PARTITION
 	if strings.ToLower(*agent) == "as3" {
-		resource.DEFAULT_PARTITION += "_AS3"
 		*agent = "as3"
 		dgPath = strings.Join([]string{resource.DEFAULT_PARTITION, "Shared"}, "/")
 	}
@@ -772,10 +772,15 @@ func main() {
 		return
 	}
 
+	disableLTM := false
+	if *agent == cisAgent.AS3Agent{
+		disableLTM = true
+	}
 	gs := globalSection{
 		LogLevel:       *logLevel,
 		VerifyInterval: *verifyInterval,
 		VXLANPartition: vxlanPartition,
+		DisableLTM:     disableLTM,
 	}
 	bs := bigIPSection{
 		BigIPUsername:   *bigIPUsername,
@@ -854,16 +859,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer appMgr.AgentCIS.DeInit()
-	// Initlize CCCL for L2-L3 if agent is AS3
-	// TODO: this will be removed when L2-L3 support is added in AS3
-	if *agent == cisAgent.AS3Agent {
-		appMgr.AgentCCCL, err = cisAgent.CreateAgent(cisAgent.CCCLAgent)
-		if err = appMgr.AgentCCCL.Init(getAgentParams(cisAgent.CCCLAgent)); err != nil {
-			log.Fatalf("[INIT] Failed to initialize CCCL Agent %v error: err: %+v\n", *agent, err)
-			os.Exit(1)
-		}
-		defer appMgr.AgentCCCL.DeInit()
-	}
 
 	GetNamespaces(appMgr)
 	intervalFactor := time.Duration(*nodePollInterval)
@@ -995,6 +990,8 @@ func getAS3Params() *as3.Params {
 		LogResponse:               *logAS3Response,
 		RspChan:                   agRspChan,
 		UserAgent:                 getUserAgentInfo(),
+		ConfigWriter:              getConfigWriter(),
+		EventChan:                 eventChan,
 	}
 }
 
